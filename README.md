@@ -1,6 +1,11 @@
 # Overview
 
-A template file and folder structure for a data analysis project/paper done with R/Rmarkdown/Github. 
+data > raw_data> SympAct_Any_Pos.Rda_
+code > processing_code > processingscript.R
+code > analysis_code > exploration.Rmd
+code > analysis_code > analysisscript.Rmd
+
+ 
 
 # Pre-requisites
 
