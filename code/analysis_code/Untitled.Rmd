@@ -1,0 +1,21 @@
+---
+title: "analysisscript2"
+author: "Ehsan"
+date: "10/20/2021"
+output: html_document
+---
+```{r}
+library(here)
+library(tidyverse)
+library(tidymodels)
+library(dplyr)
+```
+
+data_location <- here::here("data","processed_data","processeddata.rds")
+
+data <- readRDS(data_location)
+
+split_data <- initial_split(data, prop = 3/4)
+
+training_data <- training(split_data)
+test_data  <- testing(split_data)
