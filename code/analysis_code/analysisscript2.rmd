@@ -60,6 +60,7 @@ Nausea_fit %>%
   extract_fit_parsnip() %>% 
   tidy()
 ```
+
 #applying oit to make some predictions on test data
 ```{r}
 predict(Nausea_fit, test_data)
@@ -177,7 +178,14 @@ Nausea_augment_predict4 %>%
 ```
 #roc-auc value for both test and training data set using the alternative model is below 0.5. So this alternative model is not a good fit.
 
+<<<<<<< HEAD
 
+=======
+# ###################### Below is where Zhihan's part starts ###################
+
+
+# receipe for model with all predictors and the linear model
+>>>>>>> master
 ```{r}
 all_prdtr_rec <- recipe(BodyTemp ~ ., data = training_data) 
 single_prdtr_rec <- recipe(BodyTemp ~ RunnyNose, data = training_data)
