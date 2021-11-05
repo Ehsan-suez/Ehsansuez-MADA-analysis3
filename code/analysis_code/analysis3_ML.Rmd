@@ -1,0 +1,49 @@
+---
+title: "analysis3_ML"
+author: "Ehsan"
+date: "11/5/2021"
+output: html_document
+---
+
+```{r}
+library(skimr)
+library(dplyr) #for data processing
+library(here)
+library(rsample)
+library(recipes)
+library(tidymodels)
+library(table1)
+```
+
+#locating the data
+```{r}
+data_location <-here::here("data","processed_data","processeddata.rds")
+data <- readRDS(data_location)
+```
+#have a look at the data
+```{r}
+glimpse(data)
+```
+#Preprocessing: Feature removal. Removing coughYN, coughYN2 and myalgiaYn columns.
+```{r}
+data_1 <-  select(data, -c(CoughYN, WeaknessYN, CoughYN2, MyalgiaYN))
+```
+#checking of the number of columns actually got reduced or not
+```{r}
+glimpse(data_1)
+```
+#ordering factors for Weakness, CoughIntensity, Myalgia 
+```{r}
+data_2 <- mutate(data_1, Weakness = factor(Weakness, levels = c("None", "Mild","Moderate","Severe"),ordered = TRUE))
+data_3 <- mutate(data_2, CoughIntensity = factor(CoughIntensity, levels = c("None", "Mild", "Moderate","Severe"),ordered = TRUE))
+data_4 <- mutate(data_3, Myalgia = factor(Myalgia, levels = c("None", "Mild", "Moderate","Severe"),ordered = TRUE))
+```
+#checking if those three coumn are actually ordered or not.
+```{r}
+skim(data_4)
+```
+#Finding out which categories have less than 50 inputs
+```{r}
+table <- table1(~ . , data=data_4, overall="Total")
+table
+```
