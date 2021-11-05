@@ -47,3 +47,12 @@ skim(data_4)
 table <- table1(~ . , data=data_4, overall="Total")
 table
 ```
+
+```{r}
+data_4<- data_4%>%
+  select(-c(Hearing, Vision))
+```
+
+```{r}
+glimpse(data_4)
+```
