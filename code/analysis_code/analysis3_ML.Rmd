@@ -13,6 +13,8 @@ library(rsample)
 library(recipes)
 library(tidymodels)
 library(table1)
+library(rpart)
+library(vip)
 ```
 
 #locating the data
@@ -24,6 +26,8 @@ data <- readRDS(data_location)
 ```{r}
 glimpse(data)
 ```
+
+#Part 1: Preprocessing
 #Preprocessing: Feature removal. Removing coughYN, coughYN2 and myalgiaYn columns.
 ```{r}
 data_1 <-  select(data, -c(CoughYN, WeaknessYN, CoughYN2, MyalgiaYN))
@@ -47,12 +51,213 @@ skim(data_4)
 table <- table1(~ . , data=data_4, overall="Total")
 table
 ```
-
+#dropping the two column that have <50 inputs
 ```{r}
-data_4<- data_4%>%
+ML_processed<- data_4%>%
   select(-c(Hearing, Vision))
+```
+#checking if it was removed successfully
+```{r}
+glimpse(ML_processed)
+```
+
+#Part2: Analysis
+#set random seed to 123
+```{r}
+set.seed(123)
+```
+# Put 70% of the data into the training set and 30% into testing using strata=BodyTemp
+```{r}
+data_split <- initial_split(ML_processed, prop = 0.7, strata = BodyTemp)
+```
+# Create data frames for the two sets:
+```{r}
+train_data <- training(data_split)
+test_data  <- testing(data_split)
+```
+
+# training set proportions by class
+```{r}
+train_data %>% 
+  count(BodyTemp) %>% 
+  mutate(prop = n/sum(n))
+```
+# test set proportions by class
+```{r}
+test_data %>% 
+  count(BodyTemp) %>% 
+  mutate(prop = n/sum(n))
+```
+##5-fold cross validation, 5 times repeated, stratified on `BodyTemp` for the CV folds
+```{r}
+folds <- vfold_cv(train_data, v = 5, repeats =5, strata= "BodyTemp")
+```
+#create recipe that codes categorical variables as dummy variables
+```{r}
+flu_recipe <- recipe(BodyTemp ~ ., data = train_data) %>%
+           step_dummy(all_nominal_predictors())
+```
+
+#Build a null model
+```{r}
+null_mod <- linear_reg() %>%
+  set_engine("lm") 
+```
+#Model workflow pairs a model and recipe together
+```{r}
+null_workflow <- 
+  workflow() %>%
+  add_model(null_mod) %>%
+  add_recipe(flu_recipe)
+```
+#"fit" model to training data
+```{r}
+null_train <- null_workflow %>%
+                fit(data = train_data)
+```
+# Obtaining Predictions
+```{r}
+predict(null_train, train_data) #make prediction
+null_augment_train <- augment(null_train, train_data) #use augment
+null_augment_train %>% select(BodyTemp)
+```
+# Calculating Root RMSE 
+```{r}
+rmse_train <- null_augment_train %>% rmse(truth = BodyTemp, .pred) #calculate rmse
+rmse_train
+```
+
+
+#"fit" model to test data
+```{r}
+null_test <- null_workflow %>%
+                fit(data = test_data)
+```
+# Obtaining Predictions
+```{r}
+predict(null_test, test_data) #make prediction
+null_augment_test <- augment(null_test, test_data) #use augment
+null_augment_test %>% select(BodyTemp)
+```
+# Calculating Root RMSE 
+```{r}
+rmse_test <- null_augment_test %>% rmse(truth = BodyTemp, .pred) #calculate rmse
+rmse_test
+```
+
+
+#part 3: We'll use three models
+
+#3.1: Tree model
+#define the tree model [code from https://www.tidymodels.org/start/tuning/]
+```{r}
+tune_spec <-
+  decision_tree(
+    cost_complexity = tune(),
+    tree_depth = tune(),
+  ) %>%
+  set_engine("rpart") %>%
+  set_mode("regression") ##'regression' instead of 'classification'
+tune_spec
+```
+
+# tuning grid specification
+```{r}
+tree_grid <- grid_regular(cost_complexity(),
+                          tree_depth(),
+                          levels = 5)
+```
+#define workflow for tree
+```{r}
+tree_workflow <- workflow() %>%
+               add_model(tune_spec) %>%
+               add_recipe(flu_recipe) #recipe from line 95
 ```
 
 ```{r}
-glimpse(data_4)
+# tuning using cross-validation and the tune_grid() function
+tree_res <- 
+  tree_workflow %>% 
+  tune_grid(resamples = folds, grid = tree_grid)
+```
+
+```{r}
+tree_res %>% 
+  collect_metrics()
+```
+
+#plotting metrics
+```{r}
+tree_res %>%
+  collect_metrics() %>%
+  mutate(tree_depth = factor(tree_depth)) %>%
+  ggplot(aes(cost_complexity, mean, color = tree_depth)) +
+  geom_line(size = 1.5, alpha = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ .metric, scales = "free", nrow = 2) +
+  scale_x_log10(labels = scales::label_number()) +
+  scale_color_viridis_d(option = "plasma", begin = .9, end = 0)
+```
+#finding best model               
+```{r}
+tree_res %>%
+  show_best("rmse")
+```
+#continued
+```{r}
+best_tree <- tree_res %>%
+  select_best("rmse")
+best_tree
+```
+#finalize workflow
+```{r}
+final_wf <- 
+  tree_workflow %>% 
+  finalize_workflow(best_tree)
+final_wf
+```
+# final workflow using the fit() function
+```{r}
+final_fit <- 
+  final_wf %>%
+  last_fit(data_split) 
+```
+
+```{r}
+final_fit %>%
+  collect_metrics() 
+```
+#predictions
+```{r}
+tree_prediction <- final_fit %>%
+  collect_predictions() 
+```
+
+# Make two plots, model predictions from the tuned model versus actual outcomes
+  
+```{r}
+ggplot(data=tree_prediction, aes(x=.pred, y=BodyTemp)) + geom_point() + labs(title= "Plot of Model Predictions from Tuned Model vs Actual Outcomes", 
+       x= "Model Predictions", y= "Actual Outcomes") 
+```
+#calculating residuals
+```{r}
+tree_prediction$resid <- tree_prediction$BodyTemp - tree_prediction$.pred 
+```
+# plotting residuals 
+```{r}
+ggplot(data=tree_prediction, aes(x=.pred , y=resid)) + geom_point() +
+  labs(title= "Plot of Model Predictions from Tuned Model vs Actual Outcomes", 
+       x= "Model Predictions", y= "Residuals") 
+```
+
+```{r}
+show_best(final_fit, metric= "rmse")
+```
+
+# Estimate variable importance based on the model’s structure.
+```{r}
+library(vip)
+final_fit %>% 
+  extract_fit_parsnip() %>% 
+  vip()
 ```
